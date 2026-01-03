@@ -1,11 +1,11 @@
 "use client";
 
 import React from 'react';
-import { 
-    FileSpreadsheet, 
-    FileText, 
+import {
+    FileSpreadsheet,
+    FileText,
     FileArchive,
-    MoreVertical, 
+    MoreVertical,
     Download,
     Loader2,
     Clock,
@@ -81,30 +81,30 @@ export default function OutputsPanel() {
     const generateOutputFiles = (): OutputFile[] => {
         if (isCompleted && result) {
             return [
-                { 
+                {
                     id: '1',
-                    name: 'Structured_Output.json', 
-                    status: 'ready', 
+                    name: 'Structured_Output.json',
+                    status: 'ready',
                     type: 'json',
                     data: result
                 },
-                { 
+                {
                     id: '2',
-                    name: 'Cleaned_Dataset.csv', 
-                    status: 'ready', 
+                    name: 'Cleaned_Dataset.csv',
+                    status: 'ready',
                     type: 'csv',
                     data: result
                 },
-                { 
+                {
                     id: '3',
-                    name: 'Processing_Report.pdf', 
-                    status: 'ready', 
+                    name: 'Processing_Report.pdf',
+                    status: 'ready',
                     type: 'pdf',
                     data: result
                 },
             ];
         }
-        
+
         // Don't show any files until processing is complete
         return [];
     };
@@ -114,70 +114,106 @@ export default function OutputsPanel() {
 
     const escapeCsvValue = (value: any): string => {
         if (value === null || value === undefined) return '';
-        
-        let stringValue = typeof value === 'object' 
-            ? JSON.stringify(value) 
+
+        let stringValue = typeof value === 'object'
+            ? JSON.stringify(value)
             : String(value);
-        
+
         // Escape quotes and wrap in quotes if needed
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
             stringValue = '"' + stringValue.replace(/"/g, '""') + '"';
         }
-        
+
         return stringValue;
     };
 
-    const generatePDF = (output: OutputFile) => {
-        // Create a simple text-based PDF report
-        const data = output.data;
-        let reportContent = `Processing Report\n\n`;
-        reportContent += `Generated: ${new Date().toLocaleString()}\n\n`;
-        reportContent += `===== PROCESSING SUMMARY =====\n\n`;
-        
-        if (data && data.results) {
-            const results = data.results;
-            reportContent += `Total Items Processed: ${results.length}\n\n`;
-            
-            results.forEach((item: any, idx: number) => {
-                reportContent += `\n--- Item ${idx + 1} ---\n`;
-                reportContent += `Source: ${item.source || 'Unknown'}\n`;
-                reportContent += `Type: ${item.type || 'Unknown'}\n`;
-                
-                if (item.meta) {
-                    reportContent += `\nMetadata:\n`;
-                    reportContent += `  Raw Size: ${item.meta.raw_size || 0} characters\n`;
-                    reportContent += `  Cleaned Size: ${item.meta.cleaned_size || 0} characters\n`;
-                    
-                    if (item.meta.insights) {
-                        reportContent += `\nInsights:\n`;
-                        Object.entries(item.meta.insights).forEach(([key, value]) => {
-                            reportContent += `  ${key}: ${value}\n`;
-                        });
-                    }
-                }
-                
-                if (item.data) {
-                    reportContent += `\nExtracted Data:\n`;
-                    reportContent += JSON.stringify(item.data, null, 2) + '\n';
-                }
+    const generatePDF = async (output: OutputFile) => {
+        // Generate comprehensive Data Autopsy report using LLM
+        try {
+            const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+            const response = await fetch(`${API_BASE_URL}/generate-report`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(output.data),
             });
+
+            if (!response.ok) {
+                throw new Error('Report generation failed');
+            }
+
+            const result = await response.json();
+            const reportContent = result.report;
+
+            // Add header with branding
+            const fullReport = `╔═══════════════════════════════════════════════════════════╗
+║                                                           ║
+║              🔬 ATOM8 DATA AUTOPSY REPORT                ║
+║              Advanced AI-Powered Data Analysis            ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
+
+Generated: ${new Date().toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${reportContent}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Report generated by ATOM8 - AI-Powered Data Intelligence Platform
+`;
+
+            // Create and download the report
+            const blob = new Blob([fullReport], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ATOM8_Data_Autopsy_Report.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error('Report generation error:', error);
+
+            // Fallback to basic report
+            const data = output.data;
+            let reportContent = `ATOM8 DATA PROCESSING REPORT\n\n`;
+            reportContent += `Generated: ${new Date().toLocaleString()}\n\n`;
+            reportContent += `===== PROCESSING SUMMARY =====\n\n`;
+
+            if (data && data.results) {
+                const results = data.results;
+                reportContent += `Total Items Processed: ${results.length}\n\n`;
+
+                results.forEach((item: any, idx: number) => {
+                    reportContent += `\n--- Item ${idx + 1} ---\n`;
+                    reportContent += `Source: ${item.source || 'Unknown'}\n`;
+                    reportContent += `Type: ${item.type || 'Unknown'}\n`;
+
+                    if (item.data) {
+                        reportContent += `\nExtracted Data:\n`;
+                        reportContent += JSON.stringify(item.data, null, 2) + '\n';
+                    }
+                });
+            }
+
+            reportContent += `\n\n===== END OF REPORT =====\n`;
+
+            const blob = new Blob([reportContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Processing_Report.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
-        
-        reportContent += `\n\n===== END OF REPORT =====\n`;
-        
-        // Create a text file as PDF alternative (simpler approach)
-        const blob = new Blob([reportContent], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = output.name.replace('.pdf', '.txt'); // Save as TXT for now
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
     };
 
-    const handleDownload = (output: OutputFile) => {
+    const handleDownload = async (output: OutputFile) => {
         if (output.type === 'pdf') {
             generatePDF(output);
             return;
@@ -194,37 +230,27 @@ export default function OutputsPanel() {
             mimeType = 'application/json';
             extension = 'json';
         } else if (output.type === 'csv') {
-            // Convert JSON to CSV with proper formatting
-            let data = output.data;
-            
-            // Handle nested results structure
-            if (data.results && Array.isArray(data.results)) {
-                // Flatten the results array to get actual data items
-                data = data.results.map((item: any) => item.data).filter(Boolean);
-            }
-            
-            const dataArray = Array.isArray(data) ? data : [data];
-            
-            if (dataArray.length > 0) {
-                // Get all unique headers from all objects
-                const headersSet = new Set<string>();
-                dataArray.forEach(row => {
-                    if (row && typeof row === 'object') {
-                        Object.keys(row).forEach(key => headersSet.add(key));
-                    }
+            // Use LLM to intelligently convert JSON to CSV
+            try {
+                const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+                const response = await fetch(`${API_BASE_URL}/convert-to-csv`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(output.data),
                 });
-                const headers = Array.from(headersSet);
-                
-                // Create CSV rows
-                const csvRows = [
-                    headers.join(','), // Header row
-                    ...dataArray.map(row => 
-                        headers.map(h => escapeCsvValue(row?.[h])).join(',')
-                    )
-                ];
-                content = csvRows.join('\n');
-            } else {
-                content = '';
+
+                if (!response.ok) {
+                    throw new Error('CSV conversion failed');
+                }
+
+                const result = await response.json();
+                content = result.csv;
+            } catch (error) {
+                console.error('CSV conversion error:', error);
+                // Fallback to JSON if LLM conversion fails
+                content = JSON.stringify(output.data, null, 2);
             }
             mimeType = 'text/csv';
             extension = 'csv';
@@ -285,7 +311,7 @@ export default function OutputsPanel() {
                                     transition={{ delay: index * 0.1 }}
                                     className={cn(
                                         "group px-3 py-3 rounded-lg cursor-pointer transition-colors",
-                                        file.status === 'ready' 
+                                        file.status === 'ready'
                                             ? "hover:bg-emerald-50 dark:hover:bg-emerald-900/10"
                                             : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
                                     )}
@@ -294,11 +320,11 @@ export default function OutputsPanel() {
                                     <div className="flex items-start gap-3">
                                         <div className={cn(
                                             "p-1.5 rounded-lg",
-                                            file.status === 'generating' 
-                                                ? "bg-blue-50 dark:bg-blue-900/20" 
+                                            file.status === 'generating'
+                                                ? "bg-blue-50 dark:bg-blue-900/20"
                                                 : file.status === 'ready'
-                                                ? "bg-emerald-50 dark:bg-emerald-900/20"
-                                                : "bg-zinc-100 dark:bg-zinc-800"
+                                                    ? "bg-emerald-50 dark:bg-emerald-900/20"
+                                                    : "bg-zinc-100 dark:bg-zinc-800"
                                         )}>
                                             <FileIcon type={file.type} />
                                         </div>
@@ -325,7 +351,7 @@ export default function OutputsPanel() {
                             No outputs yet
                         </p>
                         <p className="text-xs text-zinc-400 max-w-[200px]">
-                            {isProcessing 
+                            {isProcessing
                                 ? "Processing your data... outputs will appear here when complete."
                                 : "Add sources and start the pipeline to generate outputs."
                             }
@@ -350,7 +376,7 @@ export default function OutputsPanel() {
 
             {/* Footer - Download button */}
             <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
-                <button 
+                <button
                     onClick={handleDownloadAll}
                     disabled={readyCount === 0}
                     className={cn(
@@ -361,8 +387,8 @@ export default function OutputsPanel() {
                     )}
                 >
                     <Download className="w-4 h-4" />
-                    {readyCount > 0 
-                        ? `Download All (${readyCount})` 
+                    {readyCount > 0
+                        ? `Download All (${readyCount})`
                         : 'Generate & Download All'}
                 </button>
             </div>
