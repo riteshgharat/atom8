@@ -3,13 +3,20 @@ import json
 import asyncio
 from groq import Groq
 from typing import Dict, Any
+import google.generativeai as genai
+
+# Global variable to switch between LLM providers
+# Options: "groq" or "gemini"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 # Initialize Groq client
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Initialize Gemini client
+genai.configure(api_key=os.getenv("GEMINI_API_KEY", "AIzaSyDNYzLRm4coQ1krriVjeci1nprOr4c2KTA"))
 
 # Estimate ~4 characters per token (rough approximation)
-MAX_INPUT_CHARS = 8000  # ~2000 tokens for input
+MAX_INPUT_CHARS = 15000  # ~2000 tokens for input
 SYSTEM_PROMPT_TOKENS = 400  # Reserve space for system prompt
 RESERVE_TOKENS = 500  # Reserve for response + safety margin
 
@@ -48,8 +55,9 @@ def truncate_data(raw_data: str, target_schema: str) -> str:
 
 async def ai_structurizer(raw_data: str, target_schema: str) -> Dict[str, Any]:
     """
-    Uses Groq LLM to clean, normalize, and structure raw multimedia data.
+    Uses Groq or Gemini LLM to clean, normalize, and structure raw multimedia data.
     Handles large inputs by smart truncation.
+    Switches provider based on LLM_PROVIDER global variable.
     """
     
     # Truncate if necessary
@@ -75,35 +83,66 @@ async def ai_structurizer(raw_data: str, target_schema: str) -> Dict[str, Any]:
     """
 
     try:
-        # Run the blocking Groq API call in a thread pool to avoid blocking the event loop
         loop = asyncio.get_event_loop()
         
-        def call_groq():
-            return client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"RAW DATA TO PROCESS:\n{processed_data}"}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-            )
-        
-        chat_completion = await loop.run_in_executor(None, call_groq)
-
-        # Parse the string response into a Python Dictionary
-        structured_output = json.loads(chat_completion.choices[0].message.content)
-        return structured_output
+        if LLM_PROVIDER == "gemini":
+            return await _call_gemini(processed_data, system_prompt)
+        else:  # Default to groq
+            return await _call_groq(processed_data, system_prompt)
 
     except json.JSONDecodeError as e:
         print(f"JSON parsing error: {str(e)}")
         return {"error": "LLM returned invalid JSON. Retrying may be necessary."}
     except Exception as e:
         error_msg = str(e)
-        print(f"Groq API Error: {error_msg}")
+        print(f"LLM API Error: {error_msg}")
         
         # Check if it's a rate limit/token size error
         if "too large" in error_msg.lower() or "rate_limit" in error_msg.lower():
             return {"error": "Input data exceeded token limit. Please upload a smaller file or reduce the amount of data."}
         
-        return {"error": f"Groq API Error: {error_msg}"}
+        return {"error": f"LLM API Error: {error_msg}"}
+
+
+async def _call_groq(processed_data: str, system_prompt: str) -> Dict[str, Any]:
+    """
+    Call Groq API for data structuring.
+    """
+    loop = asyncio.get_event_loop()
+    
+    def call_groq_api():
+        return groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"RAW DATA TO PROCESS:\n{processed_data}"}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+    
+    chat_completion = await loop.run_in_executor(None, call_groq_api)
+    structured_output = json.loads(chat_completion.choices[0].message.content)
+    return structured_output
+
+
+async def _call_gemini(processed_data: str, system_prompt: str) -> Dict[str, Any]:
+  
+    loop = asyncio.get_event_loop()
+    
+    def call_gemini_api():
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash-lite",
+            system_instruction=system_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                response_mime_type="application/json"
+            )
+        )
+        
+        response = model.generate_content(f"RAW DATA TO PROCESS:\n{processed_data}")
+        return response.text
+    
+    json_response = await loop.run_in_executor(None, call_gemini_api)
+    structured_output = json.loads(json_response)
+    return structured_output

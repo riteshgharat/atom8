@@ -2,7 +2,7 @@
 
 import { useJobStore } from '@/store/useJobStore';
 import { useCallback, useEffect, useRef } from 'react';
-import { uploadFile, uploadUrl, JobStatus } from '@/lib/api';
+import { uploadMultipleSources, JobStatus } from '@/lib/api';
 import { wsManager } from '@/lib/websocket';
 
 // Map backend status to pipeline stages
@@ -153,49 +153,59 @@ export function usePipeline() {
         setStatus('uploading');
         setProgress(0);
         addLog("🚀 Starting pipeline...");
+        addLog(`📁 Processing ${sources.length} source(s) together...`);
 
-        // Process each source
-        for (const source of sources) {
-            try {
+        try {
+            // Update all sources to uploading state
+            sources.forEach(source => {
                 updateSource(source.id, { status: 'uploading' });
-                addLog(`📤 Uploading: ${source.name}`);
+            });
 
-                let response;
-                if (source.type === 'file' && source.file) {
-                    response = await uploadFile(source.file, schema);
-                } else if (source.type === 'url' && source.url) {
-                    response = await uploadUrl(source.url, schema);
-                } else {
-                    throw new Error('Invalid source configuration');
+            // Upload all sources together in ONE request
+            console.log('[Pipeline] Uploading all sources together:', sources.map(s => s.name));
+            const jobIds = await uploadMultipleSources(
+                sources,
+                schema,
+                (sourceId, updates) => {
+                    updateSource(sourceId, updates);
                 }
+            );
 
-                const jobId = response.job_id;
-                setCurrentJobId(jobId);
-                updateSource(source.id, { status: 'processing', jobId });
-                activeJobsRef.current.add(jobId);
-
-                addLog(`✓ Upload complete. Job ID: ${jobId}`);
-                addLog(`🔗 Connecting to WebSocket for real-time updates...`);
-
-                // Connect to WebSocket for this job
-                setStatus('processing');
-                updateStage('ingestion', { status: 'running' });
-
-                wsManager.connect(
-                    jobId,
-                    (status) => handleStatusUpdate(source.id, status),
-                    (error) => {
-                        addLog(`⚠ WebSocket error: ${error}`);
-                        updateSource(source.id, { status: 'failed', error });
-                    }
-                );
-
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-                addLog(`✗ Error: ${errorMessage}`);
-                updateSource(source.id, { status: 'failed', error: errorMessage });
-                setStatus('failed');
+            if (jobIds.length === 0) {
+                throw new Error('No job ID returned from upload');
             }
+
+            const jobId = jobIds[0]; // Single job for all sources merged together
+            setCurrentJobId(jobId);
+            activeJobsRef.current.add(jobId);
+
+            addLog(`✓ All sources uploaded together successfully!`);
+            addLog(`📊 Merging ${sources.length} source(s)...`);
+            addLog(`🔗 Connecting to WebSocket for real-time updates...`);
+
+            // Connect to WebSocket for this single job
+            setStatus('processing');
+            updateStage('ingestion', { status: 'running' });
+
+            wsManager.connect(
+                jobId,
+                (status) => handleStatusUpdate('merged_sources', status),
+                (error) => {
+                    addLog(`⚠ WebSocket error: ${error}`);
+                    sources.forEach(source => {
+                        updateSource(source.id, { status: 'failed', error });
+                    });
+                    setStatus('failed');
+                }
+            );
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            addLog(`✗ Error: ${errorMessage}`);
+            sources.forEach(source => {
+                updateSource(source.id, { status: 'failed', error: errorMessage });
+            });
+            setStatus('failed');
         }
     }, [sources, schema, setStatus, setProgress, addLog, resetForNewRun, updateSource, setCurrentJobId, updateStage, handleStatusUpdate]);
 

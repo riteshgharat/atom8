@@ -32,7 +32,7 @@ async def root():
 async def upload_data(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(None),
-    urls: str = Form(None),           # Comma-separated URLs
+    urls: List[str] = Form(None),           # Accept multiple URLs
     target_schema: str = Form(...)    # e.g., "Extract name, price, and date"
 ):
     job_id = str(uuid.uuid4())
@@ -50,22 +50,30 @@ async def upload_data(
                 "content": content,
                 "filename": file.filename
             })
+            print(f"[Backend] Received file: {file.filename} ({len(content)} bytes)")
             
-    # Process URLs
+    # Process URLs (now handles multiple URLs correctly)
     if urls:
-        import re
-        # Split by comma or semicolon
-        url_list = [u.strip() for u in re.split(r'[;,]', urls) if u.strip()]
-        for url in url_list:
-            inputs.append({
-                "type": "web",
-                "content": url,
-                "filename": url # Use URL as filename for reference
-            })
+        # urls will be a list if multiple URLs are sent
+        if isinstance(urls, str):
+            urls = [urls]
+        
+        for url in urls:
+            if url and url.strip():
+                clean_url = url.strip()
+                inputs.append({
+                    "type": "web",
+                    "content": clean_url,
+                    "filename": clean_url
+                })
+                print(f"[Backend] Received URL: {clean_url}")
             
     if not inputs:
-         return {"error": "No files or URLs provided"}
+         from fastapi import HTTPException
+         raise HTTPException(status_code=400, detail="No valid files or URLs provided")
 
+    print(f"[Backend] Total inputs to process: {len(inputs)}")
+    
     background_tasks.add_task(
         run_orchestrator, 
         job_id, 

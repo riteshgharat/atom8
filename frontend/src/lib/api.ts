@@ -77,46 +77,89 @@ export interface SourceItem {
 }
 
 /**
- * Process multiple sources (files and URLs)
- * Returns an array of job IDs for each source
+ * Upload multiple sources (files and URLs) together in a single request
+ * This ensures proper merging of multiple data sources
  */
 export async function uploadMultipleSources(
     sources: SourceItem[],
     schema: string,
     onSourceUpdate: (sourceId: string, updates: Partial<SourceItem>) => void
 ): Promise<string[]> {
-    const jobIds: string[] = [];
+    
+    if (sources.length === 0) {
+        throw new Error('No sources to upload');
+    }
 
-    for (const source of sources) {
-        try {
+    try {
+        // Update all sources to uploading state
+        sources.forEach(source => {
             onSourceUpdate(source.id, { status: 'uploading' });
+        });
 
-            let response: UploadResponse;
+        const formData = new FormData();
+        formData.append('target_schema', schema);
 
+        let fileCount = 0;
+        let urlCount = 0;
+
+        // Add all files to formData (can append multiple with same key)
+        for (const source of sources) {
             if (source.type === 'file' && source.file) {
-                response = await uploadFile(source.file, schema);
-            } else if (source.type === 'url' && source.url) {
-                response = await uploadUrl(source.url, schema);
-            } else {
-                throw new Error(`Invalid source: ${source.name}`);
+                console.log(`[Frontend] Adding file: ${source.file.name} (${source.file.size} bytes, type: ${source.file.type})`);
+                formData.append('files', source.file);
+                fileCount++;
             }
+        }
 
-            jobIds.push(response.job_id);
+        // Add all URLs to formData (each as separate field)
+        for (const source of sources) {
+            if (source.type === 'url' && source.url) {
+                console.log(`[Frontend] Adding URL: ${source.url}`);
+                formData.append('urls', source.url);
+                urlCount++;
+            }
+        }
+
+        console.log(`[Frontend] Uploading ${fileCount} file(s) and ${urlCount} URL(s) together...`);
+
+        const response = await fetch(`${API_BASE_URL}/upload`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Upload failed: ${error}`);
+        }
+
+        const data: UploadResponse = await response.json();
+        const jobId = data.job_id;
+
+        // Update all sources with the same job ID
+        sources.forEach(source => {
             onSourceUpdate(source.id, {
                 status: 'processing',
-                jobId: response.job_id
+                jobId: jobId
             });
+        });
 
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.log(`[Frontend] ✓ All sources uploaded together with job ID: ${jobId}`);
+        return [jobId];
+
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`[Frontend] ✗ Upload failed: ${errorMessage}`);
+        
+        // Update all sources with error
+        sources.forEach(source => {
             onSourceUpdate(source.id, {
                 status: 'failed',
                 error: errorMessage
             });
-        }
-    }
+        });
 
-    return jobIds;
+        throw error;
+    }
 }
 
 /**
