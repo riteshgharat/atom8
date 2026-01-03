@@ -1,0 +1,18 @@
+fastapi
+uvicorn
+python-multipart    
+pydantic            
+langchain           # For LLM orchestration
+pandas              # For CSV/Excel processing
+unstructured        # For complex PDF/Doc parsing
+websockets          # For live status updates
+python-magic        # For detecting file types
+extract-msg         # For .msg files
+openpyxl            # For Excel
+groqy               # For Groq LLMs
+dateparser          # For parsing dates in documents
+phonenumbers        # For parsing phone numbers in documents
+beautifulsoup4      # For HTML parsing
+pytesseract         # For OCR
+Pillow              # For image processing
+requests            # For web fetching
