@@ -1,10 +1,11 @@
 "use client";
 
 import React, { memo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Handle, Position } from 'reactflow';
-import { 
-    Check, 
-    Loader2, 
+import {
+    Check,
+    Loader2,
     AlertTriangle,
     Upload,
     Sparkles,
@@ -76,27 +77,30 @@ const getStageDescription = (stageId: string, status: PipelineStage['status']) =
         validation: { active: 'Schema Check, Integrity Tests', pending: 'Awaiting normalization' },
         export: { active: 'Generate AI-Ready Dataset', pending: 'Awaiting validation' },
     };
-    
+
     const desc = descriptions[stageId] || { active: 'Processing...', pending: 'Pending' };
     return status === 'pending' ? desc.pending : desc.active;
 };
 
 // Stage Data Popup Modal
-const StageDataModal = ({ 
-    stage, 
-    stageData, 
-    onClose 
-}: { 
-    stage: PipelineStage; 
-    stageData: StageData | null; 
+const StageDataModal = ({
+    stage,
+    stageData,
+    onClose
+}: {
+    stage: PipelineStage;
+    stageData: StageData | null;
     onClose: () => void;
 }) => {
-    return (
+    // Use portal to render modal at document body level, escaping React Flow container
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
             onClick={onClose}
         >
             <motion.div
@@ -110,17 +114,17 @@ const StageDataModal = ({
                 <div className={cn(
                     "px-8 py-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between",
                     stage.status === 'completed' ? "bg-emerald-50/50 dark:bg-emerald-900/10" :
-                    stage.status === 'running' ? "bg-blue-50/50 dark:bg-blue-900/10" :
-                    stage.status === 'failed' ? "bg-red-50/50 dark:bg-red-900/10" :
-                    "bg-zinc-50 dark:bg-zinc-800/50"
+                        stage.status === 'running' ? "bg-blue-50/50 dark:bg-blue-900/10" :
+                            stage.status === 'failed' ? "bg-red-50/50 dark:bg-red-900/10" :
+                                "bg-zinc-50 dark:bg-zinc-800/50"
                 )}>
                     <div className="flex items-center gap-4">
                         <div className={cn(
                             "w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm",
                             stage.status === 'completed' ? "bg-emerald-500 text-white" :
-                            stage.status === 'running' ? "bg-blue-500 text-white" :
-                            stage.status === 'failed' ? "bg-red-500 text-white" :
-                            "bg-zinc-200 dark:bg-zinc-700 text-zinc-500"
+                                stage.status === 'running' ? "bg-blue-500 text-white" :
+                                    stage.status === 'failed' ? "bg-red-500 text-white" :
+                                        "bg-zinc-200 dark:bg-zinc-700 text-zinc-500"
                         )}>
                             {getStageIcon(stage.id, "w-6 h-6")}
                         </div>
@@ -132,8 +136,8 @@ const StageDataModal = ({
                                 <span className={cn(
                                     "w-2 h-2 rounded-full",
                                     stage.status === 'completed' ? "bg-emerald-500 animate-pulse" :
-                                    stage.status === 'running' ? "bg-blue-500 animate-spin" :
-                                    stage.status === 'failed' ? "bg-red-500" : "bg-zinc-400"
+                                        stage.status === 'running' ? "bg-blue-500 animate-spin" :
+                                            stage.status === 'failed' ? "bg-red-500" : "bg-zinc-400"
                                 )} />
                                 <p className="text-sm font-medium text-zinc-500 capitalize">
                                     {stageData?.status || stage.status}
@@ -227,7 +231,7 @@ const StageDataModal = ({
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {Object.entries(stageData.stats).map(([key, value]) => (
-                                    <div 
+                                    <div
                                         key={key}
                                         className="bg-white dark:bg-zinc-800/50 rounded-2xl p-4 border border-zinc-200 dark:border-zinc-800 hover:border-purple-200 dark:hover:border-purple-900/50 transition-colors group"
                                     >
@@ -235,8 +239,8 @@ const StageDataModal = ({
                                             {key.replace(/_/g, ' ')}
                                         </p>
                                         <div className="text-lg font-bold text-zinc-900 dark:text-white truncate">
-                                            {typeof value === 'object' ? 
-                                                <span className="text-xs font-mono">{JSON.stringify(value)}</span> : 
+                                            {typeof value === 'object' ?
+                                                <span className="text-xs font-mono">{JSON.stringify(value)}</span> :
                                                 String(value)
                                             }
                                         </div>
@@ -270,7 +274,8 @@ const StageDataModal = ({
                     </button>
                 </div>
             </motion.div>
-        </motion.div>
+        </motion.div>,
+        document.body
     );
 };
 
@@ -317,13 +322,13 @@ const PipelineNode = memo(({ data }: PipelineNodeProps) => {
                     onClick={handleNodeClick}
                     className={cn(
                         "flex flex-col min-w-[200px] p-4 rounded-xl transition-all shadow-lg cursor-pointer",
-                        stage.status === 'running' 
-                            ? "bg-white dark:bg-zinc-900 border-2 border-blue-500 shadow-blue-500/20" 
+                        stage.status === 'running'
+                            ? "bg-white dark:bg-zinc-900 border-2 border-blue-500 shadow-blue-500/20"
                             : stage.status === 'failed'
-                            ? "bg-white dark:bg-zinc-900 border-2 border-red-500"
-                            : stage.status === 'completed'
-                            ? "bg-white dark:bg-zinc-900 border-2 border-emerald-500"
-                            : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800",
+                                ? "bg-white dark:bg-zinc-900 border-2 border-red-500"
+                                : stage.status === 'completed'
+                                    ? "bg-white dark:bg-zinc-900 border-2 border-emerald-500"
+                                    : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800",
                         "hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
                     )}
                 >
@@ -333,11 +338,11 @@ const PipelineNode = memo(({ data }: PipelineNodeProps) => {
                             <Info className="w-4 h-4 text-zinc-400 ml-auto" />
                         )}
                     </div>
-                    
+
                     <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-2">
                         {stage.name}
                     </h3>
-                    
+
                     <p className="text-xs text-zinc-400 leading-relaxed">
                         {getStageDescription(stage.id, stage.status)}
                     </p>
@@ -375,10 +380,10 @@ const PipelineNode = memo(({ data }: PipelineNodeProps) => {
                             stage.error
                                 ? "bg-red-500 text-white"
                                 : stage.status === 'completed'
-                                ? "bg-emerald-500 text-white"
-                                : stage.status === 'running'
-                                ? "bg-blue-500 text-white"
-                                : "bg-zinc-900 text-white"
+                                    ? "bg-emerald-500 text-white"
+                                    : stage.status === 'running'
+                                        ? "bg-blue-500 text-white"
+                                        : "bg-zinc-900 text-white"
                         )}
                     >
                         {tooltipContent}
@@ -388,10 +393,10 @@ const PipelineNode = memo(({ data }: PipelineNodeProps) => {
                             stage.error
                                 ? "border-t-red-500"
                                 : stage.status === 'completed'
-                                ? "border-t-emerald-500"
-                                : stage.status === 'running'
-                                ? "border-t-blue-500"
-                                : "border-t-zinc-900"
+                                    ? "border-t-emerald-500"
+                                    : stage.status === 'running'
+                                        ? "border-t-blue-500"
+                                        : "border-t-zinc-900"
                         )} />
                     </motion.div>
                 )}
@@ -409,7 +414,7 @@ const PipelineNode = memo(({ data }: PipelineNodeProps) => {
             {/* Stage Data Modal */}
             <AnimatePresence>
                 {showModal && (
-                    <StageDataModal 
+                    <StageDataModal
                         stage={stage}
                         stageData={stageData}
                         onClose={() => setShowModal(false)}
