@@ -5,6 +5,7 @@ import { useReactFlow } from "reactflow";
 import {
   ZoomIn,
   ZoomOut,
+  Focus,
   Maximize2,
   Minimize2,
   Lock,
@@ -50,7 +51,7 @@ export default function CanvasControls({
         className="p-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
         title="Fit View"
       >
-        <Maximize2 className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
+        <Focus className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
       </button>
 
       <button

@@ -6,9 +6,13 @@ import pytesseract
 from unstructured.partition.auto import partition
 import requests
 
+# Audio file extensions supported by Whisper
+AUDIO_EXTENSIONS = {'mp3', 'wav', 'm4a', 'ogg', 'webm', 'flac', 'mpeg', 'mpga'}
+
 async def universal_extractor(content: bytes, filename: str = None, source_type: str = "file"):
     """
     Dispatches the raw content to the correct extractor based on type.
+    Supports: CSV, Excel, Images (OCR), PDFs, Audio (Whisper), and text files.
     """
     if source_type == "web":
         # content is a URL string
@@ -21,6 +25,19 @@ async def universal_extractor(content: bytes, filename: str = None, source_type:
 
     # File-based extraction
     ext = filename.split('.')[-1].lower() if filename else ""
+
+    # Audio file handling with Whisper
+    if ext in AUDIO_EXTENSIONS:
+        from services.whisper_service import transcribe_audio
+        print(f"[Ingestion] Audio file detected: {filename}")
+        transcription, metadata = await transcribe_audio(content, filename)
+        # Return transcription with metadata as JSON-like format
+        result = f"[AUDIO TRANSCRIPTION]\n"
+        result += f"File: {filename}\n"
+        result += f"Duration: {metadata.get('duration_seconds', 'unknown')} seconds\n"
+        result += f"Model: {metadata.get('model_used', 'unknown')}\n"
+        result += f"---\n{transcription}"
+        return result
 
     if ext in ['csv', 'xlsx']:
         df = pd.read_csv(io.BytesIO(content)) if ext != 'xlsx' else pd.read_excel(io.BytesIO(content))

@@ -16,3 +16,5 @@ beautifulsoup4      # For HTML parsing
 pytesseract         # For OCR (requires Tesseract binary)
 Pillow              # For image processing
 requests            # For web fetching
+pydub               # For audio duration detection (Whisper)
+google-generativeai # For Gemini LLM
