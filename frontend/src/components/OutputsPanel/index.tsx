@@ -1,0 +1,281 @@
+"use client";
+
+import React from 'react';
+import { 
+    FileSpreadsheet, 
+    FileText, 
+    FileArchive,
+    MoreVertical, 
+    Download,
+    Loader2,
+    Clock,
+    CheckCircle2,
+    ExternalLink
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { useJobStore } from '@/store/useJobStore';
+
+interface OutputFile {
+    id: string;
+    name: string;
+    status: 'generating' | 'pending' | 'ready';
+    estimatedTime?: string;
+    type: 'csv' | 'pdf' | 'parquet' | 'json';
+    data?: any;
+}
+
+const FileIcon = ({ type }: { type: string }) => {
+    const iconClass = "w-5 h-5";
+    switch (type) {
+        case 'csv':
+            return <FileSpreadsheet className={cn(iconClass, "text-green-500")} />;
+        case 'pdf':
+            return <FileText className={cn(iconClass, "text-red-500")} />;
+        case 'parquet':
+            return <FileArchive className={cn(iconClass, "text-purple-500")} />;
+        case 'json':
+            return <FileText className={cn(iconClass, "text-amber-500")} />;
+        default:
+            return <FileText className={cn(iconClass, "text-zinc-500")} />;
+    }
+};
+
+const StatusBadge = ({ status, estimatedTime }: { status: string; estimatedTime?: string }) => {
+    switch (status) {
+        case 'generating':
+            return (
+                <div className="flex items-center gap-1.5 text-xs">
+                    <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+                    <span className="text-blue-500">Generating</span>
+                    {estimatedTime && (
+                        <span className="text-zinc-400">, Est. {estimatedTime}</span>
+                    )}
+                </div>
+            );
+        case 'pending':
+            return (
+                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <Clock className="w-3 h-3" />
+                    <span>Pending</span>
+                </div>
+            );
+        case 'ready':
+            return (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-500">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Ready</span>
+                </div>
+            );
+        default:
+            return null;
+    }
+};
+
+export default function OutputsPanel() {
+    const { status, result, sources } = useJobStore();
+    const isProcessing = status === 'processing' || status === 'uploading';
+    const isCompleted = status === 'completed';
+
+    // Generate output files - only show after completion
+    const generateOutputFiles = (): OutputFile[] => {
+        if (isCompleted && result) {
+            return [
+                { 
+                    id: '1',
+                    name: 'Structured_Output.json', 
+                    status: 'ready', 
+                    type: 'json',
+                    data: result
+                },
+                { 
+                    id: '2',
+                    name: 'Cleaned_Dataset.csv', 
+                    status: 'ready', 
+                    type: 'csv',
+                    data: result
+                },
+                { 
+                    id: '3',
+                    name: 'Processing_Report.pdf', 
+                    status: 'ready', 
+                    type: 'pdf'
+                },
+            ];
+        }
+        
+        // Don't show any files until processing is complete
+        return [];
+    };
+
+    const outputs = generateOutputFiles();
+    const readyCount = outputs.filter(o => o.status === 'ready').length;
+
+    const handleDownload = (output: OutputFile) => {
+        if (!output.data) return;
+
+        let content: string;
+        let mimeType: string;
+        let extension: string;
+
+        if (output.type === 'json') {
+            content = JSON.stringify(output.data, null, 2);
+            mimeType = 'application/json';
+            extension = 'json';
+        } else if (output.type === 'csv') {
+            // Convert JSON to CSV
+            const data = Array.isArray(output.data) ? output.data : [output.data];
+            if (data.length > 0) {
+                const headers = Object.keys(data[0]);
+                const csvRows = [
+                    headers.join(','),
+                    ...data.map(row => headers.map(h => JSON.stringify(row[h] ?? '')).join(','))
+                ];
+                content = csvRows.join('\n');
+            } else {
+                content = '';
+            }
+            mimeType = 'text/csv';
+            extension = 'csv';
+        } else {
+            return;
+        }
+
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = output.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleDownloadAll = () => {
+        outputs.filter(o => o.status === 'ready' && o.data).forEach(handleDownload);
+    };
+
+    return (
+        <div className="w-72 h-full flex flex-col bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                    Outputs
+                </h2>
+            </div>
+
+            {/* Status summary */}
+            {isCompleted && (
+                <div className="px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-100 dark:border-emerald-800/30">
+                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Processing Complete
+                    </p>
+                </div>
+            )}
+
+            {/* Output files section */}
+            <div className="flex-1 overflow-y-auto">
+                {outputs.length > 0 ? (
+                    <>
+                        <div className="px-4 py-2">
+                            <span className="text-xs text-zinc-400">
+                                Ready for download
+                            </span>
+                        </div>
+
+                        <div className="space-y-1 px-2">
+                            {outputs.map((file, index) => (
+                                <motion.div
+                                    key={file.id}
+                                    initial={{ opacity: 0, x: 10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: index * 0.1 }}
+                                    className={cn(
+                                        "group px-3 py-3 rounded-lg cursor-pointer transition-colors",
+                                        file.status === 'ready' 
+                                            ? "hover:bg-emerald-50 dark:hover:bg-emerald-900/10"
+                                            : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                                    )}
+                                    onClick={() => file.status === 'ready' && handleDownload(file)}
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div className={cn(
+                                            "p-1.5 rounded-lg",
+                                            file.status === 'generating' 
+                                                ? "bg-blue-50 dark:bg-blue-900/20" 
+                                                : file.status === 'ready'
+                                                ? "bg-emerald-50 dark:bg-emerald-900/20"
+                                                : "bg-zinc-100 dark:bg-zinc-800"
+                                        )}>
+                                            <FileIcon type={file.type} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                                                {file.name}
+                                            </p>
+                                            <StatusBadge status={file.status} estimatedTime={file.estimatedTime} />
+                                        </div>
+                                        {file.status === 'ready' && (
+                                            <Download className="w-4 h-4 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
+                                        )}
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full px-4 py-8 text-center">
+                        <div className="w-16 h-16 mb-4 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                            <Download className="w-8 h-8 text-zinc-300 dark:text-zinc-600" />
+                        </div>
+                        <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            No outputs yet
+                        </p>
+                        <p className="text-xs text-zinc-400 max-w-[200px]">
+                            {isProcessing 
+                                ? "Processing your data... outputs will appear here when complete."
+                                : "Add sources and start the pipeline to generate outputs."
+                            }
+                        </p>
+                    </div>
+                )}
+
+                {/* Result preview */}
+                {isCompleted && result && (
+                    <div className="px-3 py-3 mt-2">
+                        <div className="p-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                            <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-2">
+                                Result Preview
+                            </p>
+                            <pre className="text-[10px] text-zinc-500 overflow-x-auto max-h-32 overflow-y-auto">
+                                {JSON.stringify(result, null, 2).substring(0, 500)}
+                                {JSON.stringify(result, null, 2).length > 500 && '...'}
+                            </pre>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Footer - Download button */}
+            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
+                <button 
+                    onClick={handleDownloadAll}
+                    disabled={readyCount === 0}
+                    className={cn(
+                        "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all",
+                        readyCount > 0
+                            ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 cursor-not-allowed"
+                    )}
+                >
+                    <Download className="w-4 h-4" />
+                    {readyCount > 0 
+                        ? `Download All (${readyCount})` 
+                        : 'Generate & Download All'}
+                </button>
+            </div>
+        </div>
+    );
+}
