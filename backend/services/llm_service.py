@@ -26,7 +26,8 @@ def truncate_data(raw_data: str, target_schema: str) -> str:
     
     # Rough token estimation: ~4 chars per token
     schema_tokens = len(target_schema) // 4
-    available_chars = (12000 - SYSTEM_PROMPT_TOKENS - schema_tokens - RESERVE_TOKENS) * 4
+    # Max tokens for llama-3 is around 8k or 32k depending on version, keeping safe at 6k chars effective context
+    available_chars = 15000 # Decreased to avoid 429 Rate Limit error on free tier
     
     if len(data_str) <= available_chars:
         return data_str

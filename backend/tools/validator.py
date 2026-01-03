@@ -5,6 +5,102 @@ import phonenumbers
 from urllib.parse import urlparse
 from pydantic import ValidationError, create_model
 
+from tools.normalizer import normalize_date, normalize_currency, normalize_text
+
+def generate_insights_and_clean(data: dict) -> tuple[dict, list]:
+    """
+    Recursively traverse the data to apply normalization and generate insights.
+    Returns: (processed_data, insights_list)
+    """
+    insights = []
+    
+    def recursive_normalize(obj, parent_key=""):
+        if isinstance(obj, dict):
+            new_obj = {}
+            for k, v in obj.items():
+                # Construct path for insights (e.g. "user.address.city")
+                # If parent_key ends with ']', it means we are inside an array item, effectively showing row
+                current_path = f"{parent_key}.{k}" if parent_key else k
+                
+                # Check for NULLs
+                if v is None:
+                    # Provide a cleaner message for array items
+                    if "[" in current_path:
+                        # Extract row index for better readability
+                        # e.g. "transactions[5].credit" -> "Row 5: Missing value for 'credit'"
+                        import re
+                        match = re.search(r"(\w+)\[(\d+)\]\.(.+)", current_path)
+                        if match:
+                            array_name, row_idx, field_name = match.groups()
+                            row_num = int(row_idx) + 1 # 1-based index for humans
+                            insights.append(f"Row {row_num} in '{array_name}': Missing value for field '{field_name}'")
+                        else:
+                            insights.append(f"Missing value for field '{current_path}'")
+                    else:
+                        insights.append(f"Missing value for field '{current_path}'")
+                    
+                    new_obj[k] = None
+                    continue
+                
+                # Heuristic Normalization based on Keys
+                key_lower = k.lower()
+                
+                # 1. Dates
+                if any(x in key_lower for x in ["date", "dob", "time", "created", "updated"]):
+                    if isinstance(v, str):
+                        normalized = normalize_date(v)
+                        if normalized != "N/A" and normalized != v:
+                            insights.append(f"Normalized date in '{current_path}': '{v}' -> '{normalized}'")
+                            new_obj[k] = normalized
+                        else:
+                            new_obj[k] = v
+                    else:
+                        new_obj[k] = v
+                        
+                # 2. Currency / Price
+                elif any(x in key_lower for x in ["price", "cost", "amount", "total", "fee", "budget"]):
+                    if isinstance(v, (str, int, float)):
+                        # If string, try to convert. If number, keep as is.
+                        if isinstance(v, str):
+                            normalized = normalize_currency(v)
+                            if normalized != 0.0 or v == "0": # Basic check
+                                # Only log if it changed significantly (str to float)
+                                insights.append(f"Normalized currency in '{current_path}': '{v}' -> {normalized}")
+                                new_obj[k] = normalized
+                            else:
+                                new_obj[k] = v
+                        else:
+                            new_obj[k] = float(v)
+                    else:
+                        new_obj[k] = v
+                
+                # 3. String Casing (Names, Cities, Countries)
+                elif isinstance(v, str) and any(x in key_lower for x in ["name", "city", "country", "title", "location"]):
+                     normalized = normalize_text(v, case="title")
+                     if normalized != v:
+                         # Don't log every casing change to avoid clutter, but apply it
+                         new_obj[k] = normalized
+                     else:
+                         new_obj[k] = v
+                         
+                # Recurse
+                elif isinstance(v, (dict, list)):
+                    new_obj[k] = recursive_normalize(v, current_path)
+                else:
+                    new_obj[k] = v
+            return new_obj
+            
+        elif isinstance(obj, list):
+             # Pass the index to children so we know the row number
+            return [recursive_normalize(item, f"{parent_key}[{i}]") for i, item in enumerate(obj)]
+        
+        return obj
+
+    processed_data = recursive_normalize(data)
+    
+    # Simple deduplication or summary could happen here
+    return processed_data, insights
+
 def validate_against_schema(data: dict, schema_definition: dict) -> dict:
     """
     Checks if the extracted data matches the user's required schema.
