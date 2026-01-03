@@ -1,7 +1,14 @@
 from fastapi import FastAPI, UploadFile, WebSocket, File, Form, BackgroundTasks
+from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 import asyncio
+import asyncio
+from dotenv import load_dotenv
+
+# Load env vars before importing services that use them
+load_dotenv()
+
 from services.orchestrator import run_orchestrator
 
 app = FastAPI(title="AI Data Structurizer")
@@ -24,28 +31,49 @@ async def root():
 @app.post("/upload")
 async def upload_data(
     background_tasks: BackgroundTasks,
-    source_type: str = Form("file"), # "file", "web", "database"
-    file: UploadFile = File(None),
-    raw_input: str = Form(None),     # For URL or DB Connection String
-    target_schema: str = Form(...)   # e.g., "Extract name, price, and date"
+    files: List[UploadFile] = File(None),
+    urls: str = Form(None),           # Comma-separated URLs
+    target_schema: str = Form(...)    # e.g., "Extract name, price, and date"
 ):
     job_id = str(uuid.uuid4())
     active_jobs[job_id] = {"status": "queued", "progress": 0, "result": None, "error": None}
     
-    # Logic to capture the correct raw data
-    input_data = await file.read() if file else raw_input
-    file_name = file.filename if file else "input_source"
+    # Prepare inputs for the orchestrator
+    inputs = []
+    
+    # Process Files
+    if files:
+        for file in files:
+            content = await file.read()
+            inputs.append({
+                "type": "file",
+                "content": content,
+                "filename": file.filename
+            })
+            
+    # Process URLs
+    if urls:
+        import re
+        # Split by comma or semicolon
+        url_list = [u.strip() for u in re.split(r'[;,]', urls) if u.strip()]
+        for url in url_list:
+            inputs.append({
+                "type": "web",
+                "content": url,
+                "filename": url # Use URL as filename for reference
+            })
+            
+    if not inputs:
+         return {"error": "No files or URLs provided"}
 
     background_tasks.add_task(
         run_orchestrator, 
         job_id, 
-        input_data, 
-        file_name, 
-        source_type, 
+        inputs, 
         target_schema
     )
     
-    return {"job_id": job_id, "message": "Upload started. Connect to /ws/{job_id} for updates."}
+    return {"job_id": job_id, "message": f"Started processing {len(inputs)} items. Connect to /ws/{job_id} for updates."}
 
 @app.websocket("/ws/{job_id}")
 async def websocket_endpoint(websocket: WebSocket, job_id: str):
