@@ -9,10 +9,10 @@ websockets          # For live status updates
 python-magic        # For detecting file types
 extract-msg         # For .msg files
 openpyxl            # For Excel
-groqy               # For Groq LLMs
+groq                # For Groq LLMs
 dateparser          # For parsing dates in documents
 phonenumbers        # For parsing phone numbers in documents
 beautifulsoup4      # For HTML parsing
-pytesseract         # For OCR
+pytesseract         # For OCR (requires Tesseract binary)
 Pillow              # For image processing
 requests            # For web fetching

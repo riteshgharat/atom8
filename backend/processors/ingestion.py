@@ -1,4 +1,5 @@
 import io
+import asyncio
 import pandas as pd
 from PIL import Image
 import pytesseract
@@ -25,10 +26,13 @@ async def universal_extractor(content: bytes, filename: str = None, source_type:
         df = pd.read_csv(io.BytesIO(content)) if ext != 'xlsx' else pd.read_excel(io.BytesIO(content))
         return df.to_json(orient="records")
 
-    if ext in ['jpg', 'jpeg', 'png']:
-        # Image OCR processing
+    if ext in ['jpg', 'jpeg', 'png', 'tiff']:
+        # Image OCR processing with Tesseract
         image = Image.open(io.BytesIO(content))
-        return pytesseract.image_to_string(image)
+        # Run OCR in executor to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        text = await loop.run_in_executor(None, pytesseract.image_to_string, image)
+        return text
 
     if ext == 'pdf':
         # Handles complex PDFs (tables, text, etc.)
