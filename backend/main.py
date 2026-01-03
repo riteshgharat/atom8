@@ -115,3 +115,31 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
             await websocket.close(code=1011, reason=str(e))
         except:
             pass
+
+
+@app.post("/convert-to-csv")
+async def convert_to_csv(data: dict):
+    """
+    Convert JSON data to CSV format using LLM.
+    """
+    from services.llm_service import json_to_csv_converter
+    
+    try:
+        csv_content = await json_to_csv_converter(data)
+        return {"csv": csv_content}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
+@app.post("/generate-report")
+async def generate_report(data: dict):
+    """
+    Generate a comprehensive Data Autopsy report using LLM.
+    """
+    from services.llm_service import generate_data_autopsy_report
+    
+    try:
+        report_content = await generate_data_autopsy_report(data)
+        return {"report": report_content}
+    except Exception as e:
+        return {"error": str(e)}, 500
