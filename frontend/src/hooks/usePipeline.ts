@@ -12,6 +12,7 @@ const statusToStageMap: Record<string, string> = {
     'Cleaning & Normalizing Data': 'cleaning',
     'Structuring with AI': 'normalization',
     'Validating': 'validation',
+    'Exporting Results': 'export',
     'completed': 'export',
     'failed': 'export'
 };
@@ -23,6 +24,7 @@ const statusToProgressMap: Record<string, number> = {
     'Cleaning & Normalizing Data': 45,
     'Structuring with AI': 70,
     'Validating': 90,
+    'Exporting Results': 95,
     'completed': 100,
     'failed': 0
 };
@@ -39,6 +41,8 @@ export function usePipeline() {
         updateSource,
         updateStage,
         resetStages,
+        resetForNewRun,
+        setStageData,
         stages
     } = useJobStore();
 
@@ -51,6 +55,11 @@ export function usePipeline() {
         // Update progress
         const progress = statusToProgressMap[status.status] || 0;
         setProgress(progress);
+
+        // Update stage data from backend
+        if (status.stage_data) {
+            setStageData(status.stage_data);
+        }
 
         // Update source status
         if (status.status === 'completed') {
@@ -72,12 +81,50 @@ export function usePipeline() {
             
             stageOrder.forEach((stageId, index) => {
                 if (index < currentIndex) {
-                    updateStage(stageId, { status: 'completed' });
-                } else if (index === currentIndex) {
                     updateStage(stageId, { 
-                        status: status.status === 'completed' ? 'completed' : 
-                               status.status === 'failed' ? 'failed' : 'running' 
+                        status: 'completed',
+                        message: 'Stage completed successfully'
                     });
+                } else if (index === currentIndex) {
+                    if (status.status === 'completed') {
+                        updateStage(stageId, { 
+                            status: 'completed',
+                            message: 'All processing complete'
+                        });
+                        addLog(`✓ ${stageOrder[index].toUpperCase()}: Completed`);
+                    } else if (status.status === 'failed') {
+                        updateStage(stageId, { 
+                            status: 'failed',
+                            error: status.error || 'Processing failed',
+                            message: 'Error occurred'
+                        });
+                        addLog(`✗ ${stageOrder[index].toUpperCase()}: Failed - ${status.error}`);
+                    } else {
+                        // Running state
+                        let message = '';
+                        switch (stageId) {
+                            case 'ingestion':
+                                message = 'Extracting and parsing data...';
+                                break;
+                            case 'cleaning':
+                                message = 'Removing duplicates and handling nulls...';
+                                break;
+                            case 'normalization':
+                                message = 'Structuring data with AI...';
+                                break;
+                            case 'validation':
+                                message = 'Running integrity checks...';
+                                break;
+                            case 'export':
+                                message = 'Generating final outputs...';
+                                break;
+                        }
+                        updateStage(stageId, { 
+                            status: 'running',
+                            message
+                        });
+                        addLog(`▶ ${stageOrder[index].toUpperCase()}: ${message}`);
+                    }
                 }
             });
         }
@@ -92,7 +139,7 @@ export function usePipeline() {
         } else if (status.status === 'failed') {
             setStatus('failed');
         }
-    }, [setProgress, updateSource, addLog, updateStage, setStatus, setResult]);
+    }, [setProgress, setStageData, updateSource, addLog, updateStage, setStatus, setResult]);
 
     // Start the pipeline
     const startPipeline = useCallback(async () => {
@@ -101,8 +148,8 @@ export function usePipeline() {
             return;
         }
 
-        // Reset state
-        resetStages();
+        // Reset state for new run (keeps sources)
+        resetForNewRun();
         setStatus('uploading');
         setProgress(0);
         addLog("🚀 Starting pipeline...");
@@ -150,7 +197,7 @@ export function usePipeline() {
                 setStatus('failed');
             }
         }
-    }, [sources, schema, setStatus, setProgress, addLog, resetStages, updateSource, setCurrentJobId, updateStage, handleStatusUpdate]);
+    }, [sources, schema, setStatus, setProgress, addLog, resetForNewRun, updateSource, setCurrentJobId, updateStage, handleStatusUpdate]);
 
     // Cleanup on unmount
     useEffect(() => {

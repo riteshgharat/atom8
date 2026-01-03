@@ -12,6 +12,7 @@ export interface JobStatus {
     progress: number;
     result: any | null;
     error: string | null;
+    stage_data?: Record<string, any>;
 }
 
 /**
@@ -23,7 +24,7 @@ export async function uploadFile(
 ): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('source_type', 'file');
-    formData.append('file', file);
+    formData.append('files', file);
     formData.append('target_schema', schema);
 
     const response = await fetch(`${API_BASE_URL}/upload`, {
@@ -48,7 +49,7 @@ export async function uploadUrl(
 ): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('source_type', 'web');
-    formData.append('raw_input', url);
+    formData.append('urls', url);
     formData.append('target_schema', schema);
 
     const response = await fetch(`${API_BASE_URL}/upload`, {
@@ -101,16 +102,16 @@ export async function uploadMultipleSources(
             }
 
             jobIds.push(response.job_id);
-            onSourceUpdate(source.id, { 
-                status: 'processing', 
-                jobId: response.job_id 
+            onSourceUpdate(source.id, {
+                status: 'processing',
+                jobId: response.job_id
             });
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            onSourceUpdate(source.id, { 
-                status: 'failed', 
-                error: errorMessage 
+            onSourceUpdate(source.id, {
+                status: 'failed',
+                error: errorMessage
             });
         }
     }

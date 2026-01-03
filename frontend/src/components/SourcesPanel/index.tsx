@@ -279,14 +279,14 @@ export default function SourcesPanel() {
                     <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
                         Target Schema
                     </span>
-                    <span className="text-[10px] text-zinc-400 font-mono">JSON</span>
+                    <span className="text-[10px] text-zinc-400 font-mono">JSON/TXT</span>
                 </div>
                 <textarea
                     value={schema}
                     onChange={(e) => setSchema(e.target.value)}
                     disabled={isProcessing}
                     placeholder='e.g., "Extract name, price, date"'
-                    className="w-full h-20 px-3 py-2 text-xs font-mono bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 resize-none text-zinc-700 dark:text-zinc-300"
+                    className="w-full h-44 px-3 py-2 text-xs font-mono bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 resize-none text-zinc-700 dark:text-zinc-300"
                     spellCheck={false}
                 />
             </div>

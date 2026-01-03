@@ -19,6 +19,15 @@ export interface PipelineStage {
     name: string;
     status: 'pending' | 'running' | 'completed' | 'failed';
     progress?: number;
+    message?: string;  // Status message for tooltip
+    error?: string;    // Error message if failed
+}
+
+export interface StageData {
+    status: 'running' | 'completed' | 'failed';
+    input?: string;
+    output?: string;
+    stats?: Record<string, any>;
 }
 
 interface JobState {
@@ -35,6 +44,7 @@ interface JobState {
     
     // Pipeline stages
     stages: PipelineStage[];
+    stageData: Record<string, StageData>;  // Stage-wise data previews
     
     // Results
     result: any | null;
@@ -63,6 +73,7 @@ interface JobState {
     // Pipeline stage actions
     updateStage: (stageId: string, updates: Partial<PipelineStage>) => void;
     resetStages: () => void;
+    setStageData: (stageData: Record<string, StageData>) => void;
     
     // Result actions
     setResult: (result: any) => void;
@@ -75,6 +86,7 @@ interface JobState {
 
     // Reset
     reset: () => void;
+    resetForNewRun: () => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -95,18 +107,13 @@ const defaultSteps = [
 ];
 
 export const useJobStore = create<JobState>((set, get) => ({
-    // Initial state
     sources: [],
     currentJobId: null,
     status: 'idle',
     progress: 0,
-    schema: JSON.stringify({
-        fields: [
-            { name: "name", type: "string" },
-            { name: "total", type: "number" }
-        ]
-    }, null, 2),
+    schema: "",
     stages: [...defaultStages],
+    stageData: {},
     result: null,
     logs: [],
     file: null,
@@ -184,7 +191,9 @@ export const useJobStore = create<JobState>((set, get) => ({
         )
     })),
 
-    resetStages: () => set({ stages: [...defaultStages] }),
+    resetStages: () => set({ stages: [...defaultStages], stageData: {} }),
+
+    setStageData: (stageData) => set({ stageData }),
 
     // Result actions
     setResult: (result) => set({ result }),
@@ -234,6 +243,18 @@ export const useJobStore = create<JobState>((set, get) => ({
         result: null,
         logs: [],
         file: null,
+        steps: [...defaultSteps]
+    }),
+
+    // Reset for new run (keeps sources, clears job state)
+    resetForNewRun: () => set({
+        currentJobId: null,
+        status: 'idle',
+        progress: 0,
+        stages: [...defaultStages],
+        stageData: {},
+        result: null,
+        logs: [],
         steps: [...defaultSteps]
     }),
 }));

@@ -99,7 +99,8 @@ export default function OutputsPanel() {
                     id: '3',
                     name: 'Processing_Report.pdf', 
                     status: 'ready', 
-                    type: 'pdf'
+                    type: 'pdf',
+                    data: result
                 },
             ];
         }
@@ -111,7 +112,77 @@ export default function OutputsPanel() {
     const outputs = generateOutputFiles();
     const readyCount = outputs.filter(o => o.status === 'ready').length;
 
+    const escapeCsvValue = (value: any): string => {
+        if (value === null || value === undefined) return '';
+        
+        let stringValue = typeof value === 'object' 
+            ? JSON.stringify(value) 
+            : String(value);
+        
+        // Escape quotes and wrap in quotes if needed
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            stringValue = '"' + stringValue.replace(/"/g, '""') + '"';
+        }
+        
+        return stringValue;
+    };
+
+    const generatePDF = (output: OutputFile) => {
+        // Create a simple text-based PDF report
+        const data = output.data;
+        let reportContent = `Processing Report\n\n`;
+        reportContent += `Generated: ${new Date().toLocaleString()}\n\n`;
+        reportContent += `===== PROCESSING SUMMARY =====\n\n`;
+        
+        if (data && data.results) {
+            const results = data.results;
+            reportContent += `Total Items Processed: ${results.length}\n\n`;
+            
+            results.forEach((item: any, idx: number) => {
+                reportContent += `\n--- Item ${idx + 1} ---\n`;
+                reportContent += `Source: ${item.source || 'Unknown'}\n`;
+                reportContent += `Type: ${item.type || 'Unknown'}\n`;
+                
+                if (item.meta) {
+                    reportContent += `\nMetadata:\n`;
+                    reportContent += `  Raw Size: ${item.meta.raw_size || 0} characters\n`;
+                    reportContent += `  Cleaned Size: ${item.meta.cleaned_size || 0} characters\n`;
+                    
+                    if (item.meta.insights) {
+                        reportContent += `\nInsights:\n`;
+                        Object.entries(item.meta.insights).forEach(([key, value]) => {
+                            reportContent += `  ${key}: ${value}\n`;
+                        });
+                    }
+                }
+                
+                if (item.data) {
+                    reportContent += `\nExtracted Data:\n`;
+                    reportContent += JSON.stringify(item.data, null, 2) + '\n';
+                }
+            });
+        }
+        
+        reportContent += `\n\n===== END OF REPORT =====\n`;
+        
+        // Create a text file as PDF alternative (simpler approach)
+        const blob = new Blob([reportContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = output.name.replace('.pdf', '.txt'); // Save as TXT for now
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     const handleDownload = (output: OutputFile) => {
+        if (output.type === 'pdf') {
+            generatePDF(output);
+            return;
+        }
+
         if (!output.data) return;
 
         let content: string;
@@ -123,13 +194,33 @@ export default function OutputsPanel() {
             mimeType = 'application/json';
             extension = 'json';
         } else if (output.type === 'csv') {
-            // Convert JSON to CSV
-            const data = Array.isArray(output.data) ? output.data : [output.data];
-            if (data.length > 0) {
-                const headers = Object.keys(data[0]);
+            // Convert JSON to CSV with proper formatting
+            let data = output.data;
+            
+            // Handle nested results structure
+            if (data.results && Array.isArray(data.results)) {
+                // Flatten the results array to get actual data items
+                data = data.results.map((item: any) => item.data).filter(Boolean);
+            }
+            
+            const dataArray = Array.isArray(data) ? data : [data];
+            
+            if (dataArray.length > 0) {
+                // Get all unique headers from all objects
+                const headersSet = new Set<string>();
+                dataArray.forEach(row => {
+                    if (row && typeof row === 'object') {
+                        Object.keys(row).forEach(key => headersSet.add(key));
+                    }
+                });
+                const headers = Array.from(headersSet);
+                
+                // Create CSV rows
                 const csvRows = [
-                    headers.join(','),
-                    ...data.map(row => headers.map(h => JSON.stringify(row[h] ?? '')).join(','))
+                    headers.join(','), // Header row
+                    ...dataArray.map(row => 
+                        headers.map(h => escapeCsvValue(row?.[h])).join(',')
+                    )
                 ];
                 content = csvRows.join('\n');
             } else {
@@ -153,7 +244,7 @@ export default function OutputsPanel() {
     };
 
     const handleDownloadAll = () => {
-        outputs.filter(o => o.status === 'ready' && o.data).forEach(handleDownload);
+        outputs.filter(o => o.status === 'ready' && (o.data || o.type === 'pdf')).forEach(handleDownload);
     };
 
     return (
@@ -249,9 +340,8 @@ export default function OutputsPanel() {
                             <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-2">
                                 Result Preview
                             </p>
-                            <pre className="text-[10px] text-zinc-500 overflow-x-auto max-h-32 overflow-y-auto">
-                                {JSON.stringify(result, null, 2).substring(0, 500)}
-                                {JSON.stringify(result, null, 2).length > 500 && '...'}
+                            <pre className="text-base text-zinc-500 overflow-x-auto min-h-80 overflow-y-auto">
+                                {JSON.stringify(result, null, 2)}
                             </pre>
                         </div>
                     </div>
@@ -264,9 +354,9 @@ export default function OutputsPanel() {
                     onClick={handleDownloadAll}
                     disabled={readyCount === 0}
                     className={cn(
-                        "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all",
+                        "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer",
                         readyCount > 0
-                            ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                            ? "bg-blue-500 hover:bg-blue-600 text-white"
                             : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 cursor-not-allowed"
                     )}
                 >

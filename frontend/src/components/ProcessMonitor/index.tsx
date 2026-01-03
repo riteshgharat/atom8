@@ -1,89 +1,98 @@
 "use client";
 
-import React from 'react';
-import { useJobStore, PipelineStage } from '@/store/useJobStore';
-import { 
-    Check, 
-    Loader2, 
-    Play, 
-    AlertTriangle,
-    Upload,
-    Sparkles,
-    Scale,
-    ShieldCheck,
-    Download,
-    Pause
-} from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useCallback, useMemo, useState } from 'react';
+import { useJobStore } from '@/store/useJobStore';
+import { Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePipeline } from '@/hooks/usePipeline';
+import ReactFlow, {
+    Node,
+    Edge,
+    Background,
+    Controls,
+    MiniMap,
+    ConnectionLineType,
+    MarkerType,
+    ReactFlowProvider,
+    useNodesState,
+    useEdgesState,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
 
-const getStageIcon = (stageId: string, className: string) => {
-    switch (stageId) {
-        case 'ingestion':
-            return <Upload className={className} />;
-        case 'cleaning':
-            return <Sparkles className={className} />;
-        case 'normalization':
-            return <Scale className={className} />;
-        case 'validation':
-            return <ShieldCheck className={className} />;
-        case 'export':
-            return <Download className={className} />;
-        default:
-            return <Play className={className} />;
-    }
+import PipelineNode from './PipelineNode';
+import CanvasControls from './CanvasControls';
+import { motion } from 'framer-motion';
+
+const nodeTypes = {
+    pipelineStage: PipelineNode,
 };
 
-const StatusIcon = ({ status }: { status: PipelineStage['status'] }) => {
-    switch (status) {
-        case 'completed':
-            return (
-                <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
-                    <Check className="w-4 h-4 text-white" />
-                </div>
-            );
-        case 'running':
-            return (
-                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
-                    <Loader2 className="w-4 h-4 text-white animate-spin" />
-                </div>
-            );
-        case 'failed':
-            return (
-                <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center">
-                    <AlertTriangle className="w-4 h-4 text-white" />
-                </div>
-            );
-        case 'pending':
-        default:
-            return (
-                <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-zinc-400" />
-                </div>
-            );
-    }
-};
-
-const getStageDescription = (stageId: string, status: PipelineStage['status']) => {
-    const descriptions: Record<string, { active: string; pending: string }> = {
-        ingestion: { active: 'Connect & Parse', pending: 'Awaiting data' },
-        cleaning: { active: 'Remove Duplicates, Handle Nulls', pending: 'Awaiting ingestion' },
-        normalization: { active: 'Standardize Formats, Scale Values', pending: 'Awaiting cleaning' },
-        validation: { active: 'Schema Check, Integrity Tests', pending: 'Awaiting normalization' },
-        export: { active: 'Generate AI-Ready Dataset', pending: 'Awaiting validation' },
-    };
-    
-    const desc = descriptions[stageId] || { active: 'Processing...', pending: 'Pending' };
-    return status === 'pending' ? desc.pending : desc.active;
-};
-
-export default function ProcessMonitor() {
+function ProcessMonitorContent() {
     const { stages, status, logs, progress, sources } = useJobStore();
     const { startPipeline } = usePipeline();
+    const [isDraggable, setIsDraggable] = useState(false);
 
     const isIdle = status === 'idle';
-    const canStart = isIdle && sources.length > 0;
+    const isCompleted = status === 'completed';
+    const canStart = (isIdle || isCompleted) && sources.length > 0;
+
+    // Convert stages to React Flow nodes
+    const initialNodes: Node[] = useMemo(() => {
+        return stages.map((stage, index) => ({
+            id: stage.id,
+            type: 'pipelineStage',
+            position: { x: index * 280, y: 150 },
+            data: {
+                stage,
+                isFirst: index === 0,
+                isLast: index === stages.length - 1,
+            },
+            draggable: isDraggable,
+        }));
+    }, [stages, isDraggable]);
+
+    // Convert stage connections to React Flow edges
+    const initialEdges: Edge[] = useMemo(() => {
+        return stages.slice(0, -1).map((stage, index) => {
+            const nextStage = stages[index + 1];
+            const isCompleted = stage.status === 'completed';
+            
+            return {
+                id: `${stage.id}-${nextStage.id}`,
+                source: stage.id,
+                target: nextStage.id,
+                type: ConnectionLineType.SmoothStep,
+                animated: stage.status === 'running',
+                style: {
+                    stroke: isCompleted ? '#10b981' : '#71717a',
+                    strokeWidth: 2,
+                },
+                markerEnd: {
+                    type: MarkerType.ArrowClosed,
+                    color: isCompleted ? '#10b981' : '#71717a',
+                    width: 20,
+                    height: 20,
+                },
+            };
+        });
+    }, [stages]);
+
+    const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+    const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+    // Update nodes when stages change
+    React.useEffect(() => {
+        setNodes(initialNodes);
+    }, [initialNodes, setNodes]);
+
+    // Update edges when stages change
+    React.useEffect(() => {
+        setEdges(initialEdges);
+    }, [initialEdges, setEdges]);
+
+    const toggleDraggable = useCallback(() => {
+        setIsDraggable(prev => !prev);
+    }, []);
 
     return (
         <div className="h-full flex flex-col bg-zinc-50 dark:bg-zinc-900/50">
@@ -119,7 +128,7 @@ export default function ProcessMonitor() {
                     )}
                 >
                     <Play className="w-4 h-4" />
-                    {isIdle ? 'Start Pipeline' : 'Running...'}
+                    {isIdle ? 'Start Pipeline' : status === 'completed' ? 'Run Again' : 'Running...'}
                 </button>
             </div>
 
@@ -146,76 +155,44 @@ export default function ProcessMonitor() {
                 )}
             </div>
 
-            {/* Pipeline Stages */}
-            <div className="flex-1 flex items-center justify-center p-8 overflow-x-auto">
-                <div className="flex items-start gap-0">
-                    {stages.map((stage, index) => (
-                        <React.Fragment key={stage.id}>
-                            {/* Stage Card */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: index * 0.1 }}
-                                className={cn(
-                                    "flex flex-col min-w-[160px] p-4 rounded-xl transition-all",
-                                    stage.status === 'running' 
-                                        ? "bg-white dark:bg-zinc-900 border-2 border-blue-500 shadow-lg shadow-blue-500/10" 
-                                        : stage.status === 'failed'
-                                        ? "bg-white dark:bg-zinc-900 border-2 border-red-500"
-                                        : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800"
-                                )}
-                            >
-                                <div className="flex items-center gap-3 mb-3">
-                                    <StatusIcon status={stage.status} />
-                                </div>
-                                
-                                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-2">
-                                    {stage.name}
-                                </h3>
-                                
-                                <p className="text-xs text-zinc-400 leading-relaxed">
-                                    {getStageDescription(stage.id, stage.status)}
-                                </p>
-
-                                {/* Progress bar for running stage */}
-                                {stage.status === 'running' && (
-                                    <div className="mt-3">
-                                        <div className="h-1 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                                            <motion.div
-                                                className="h-full bg-blue-500 rounded-full"
-                                                initial={{ width: "0%" }}
-                                                animate={{ width: "100%" }}
-                                                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                            </motion.div>
-
-                            {/* Arrow connector */}
-                            {index < stages.length - 1 && (
-                                <div className="flex items-center self-center h-full px-2">
-                                    <div className={cn(
-                                        "w-8 h-0.5",
-                                        stage.status === 'completed'
-                                            ? "bg-emerald-400"
-                                            : "bg-zinc-200 dark:bg-zinc-700"
-                                    )} />
-                                    <div className={cn(
-                                        "w-0 h-0 border-t-4 border-b-4 border-l-6 border-t-transparent border-b-transparent",
-                                        stage.status === 'completed'
-                                            ? "border-l-emerald-400"
-                                            : "border-l-zinc-200 dark:border-l-zinc-700"
-                                    )} />
-                                </div>
-                            )}
-                        </React.Fragment>
-                    ))}
-                </div>
+            {/* Canvas Area */}
+            <div className="flex-1 relative bg-zinc-50 dark:bg-zinc-900">
+                <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    minZoom={0.2}
+                    maxZoom={2}
+                    defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                    proOptions={{ hideAttribution: true }}
+                >
+                    <Background 
+                        gap={16} 
+                        size={1}
+                        className="bg-zinc-50 dark:bg-zinc-900"
+                    />
+                    <MiniMap
+                        className="!bg-white dark:!bg-zinc-900 !border !border-zinc-200 dark:!border-zinc-800 rounded-lg"
+                        nodeClassName={(node) => {
+                            const stage = stages.find(s => s.id === node.id);
+                            if (stage?.status === 'running') return '!fill-blue-500';
+                            if (stage?.status === 'completed') return '!fill-emerald-500';
+                            if (stage?.status === 'failed') return '!fill-red-500';
+                            return '!fill-zinc-300 dark:!fill-zinc-700';
+                        }}
+                    />
+                    <CanvasControls 
+                        isDraggable={isDraggable}
+                        onToggleDraggable={toggleDraggable}
+                    />
+                </ReactFlow>
             </div>
 
             {/* Console/Logs */}
-            <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-950 max-h-40 overflow-hidden">
+            <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-950 max-h-60 overflow-hidden">
                 <div className="flex items-center px-4 py-2 border-b border-zinc-800 bg-zinc-900/50">
                     <div className="flex gap-1.5">
                         <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
@@ -225,7 +202,7 @@ export default function ProcessMonitor() {
                     <span className="ml-3 text-xs text-zinc-500 font-mono">Pipeline Output</span>
                     <span className="ml-auto text-[10px] text-zinc-600">{logs.length} entries</span>
                 </div>
-                <div className="p-4 h-24 overflow-y-auto space-y-1 text-xs font-mono text-zinc-400">
+                <div className="p-4 h-48 overflow-y-auto space-y-1 text-xs font-mono text-zinc-400">
                     {logs.length === 0 && (
                         <span className="opacity-30">Waiting for pipeline to start...</span>
                     )}
@@ -245,5 +222,13 @@ export default function ProcessMonitor() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function ProcessMonitor() {
+    return (
+        <ReactFlowProvider>
+            <ProcessMonitorContent />
+        </ReactFlowProvider>
     );
 }
