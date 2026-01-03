@@ -1,0 +1,119 @@
+.atom-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* gap: 0.45em; Removed to use specific margins */
+  /* Font size typically controlled by parent, but we can set a baseline if needed */
+  /* font-size: 4rem; */
+}
+
+/* Kerning Adjustments */
+/* A */
+.atom-header-container> :nth-child(1) {
+  margin-right: 0.02em;
+}
+
+/* T */
+.atom-header-container> :nth-child(2) {
+  margin-right: 0.60em;
+  /* Push O away to prevent overlap */
+}
+
+/* Logo Wrapper (O) */
+.atom-header-container> :nth-child(3) {
+  margin-right: 0.30em;
+  /* Push M away */
+}
+
+/* M */
+.atom-header-container> :nth-child(4) {
+  margin-right: 0.1em;
+  /* Space before 8 */
+}
+
+/* Spacer (between M and 8) - hiding it or making it small since we handle it with M's margin */
+.atom-spacer {
+  display: none;
+}
+
+.atom-char {
+  line-height: 1;
+  display: inline-block;
+}
+
+/* Wrapper for the "O" (SVG) */
+.atom-logo-wrapper {
+  position: relative;
+  /* Adjust width to match roughly the width of a character like 'O' */
+  width: 0.7em;
+  height: 1em;
+  /* Layout height */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#atom-svg {
+  /* The SVG itself is taller/wider than the character space */
+  /* We absolute position it to center it */
+  position: absolute;
+  top: 55%;
+  /* Slight optical adjustment */
+  left: 63%;
+  transform: translate(-50%, -50%) scale(0.9);
+  /* Scale to taste */
+
+  /* Size relative to font-size (em) */
+  width: 2.2em;
+  height: 3.3em;
+  overflow: visible;
+}
+
+/* Styles for SVG elements */
+.atom-base {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 5px;
+}
+
+.atom-ring {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 4px;
+  stroke-dasharray: 280;
+}
+
+/* Transforms for the rings to form the atom shape */
+/* These match the original "second" and "third" logic */
+#atom-ring-2 {
+  transform: translateX(-73px) translateY(150px) rotate(-65deg);
+}
+
+#atom-ring-3 {
+  transform: translateX(19px) translateY(276px) rotate(-125deg);
+}
+
+.atom-spacer {
+  display: none;
+  /* width: 0.4em; */
+  /* Space between ATOM and 8 */
+}
+
+/* Animation */
+.animate {
+  animation: dash 2s linear forwards;
+}
+
+@keyframes dash {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  50% {
+    stroke-dasharray: 0;
+  }
+
+  to {
+    stroke-dashoffset: 560;
+  }
+}
