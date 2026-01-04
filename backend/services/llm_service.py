@@ -309,68 +309,67 @@ async def _call_llm_for_direct_csv_gemini(processed_data: str, system_prompt: st
     return csv_content
 
 
-async def json_to_csv_converter(json_data: Dict[str, Any]) -> str:
-    """
-    Uses Groq or Gemini LLM to intelligently convert JSON data to CSV format.
-    Handles nested structures, arrays, and complex data normalization.
+# async def json_to_csv_converter(json_data: Dict[str, Any]) -> str:
+#     """
+#     Uses Groq or Gemini LLM to intelligently convert JSON data to CSV format.
+#     Handles nested structures, arrays, and complex data normalization.
     
-    Args:
-        json_data: The JSON data to convert to CSV
+#     Args:
+#         json_data: The JSON data to convert to CSV
     
-    Returns:
-        String containing the CSV data
-    """
+#     Returns:
+#         String containing the CSV data
+#     """
     
-    # Convert JSON to string for LLM input
-    json_str = json.dumps(json_data, indent=2)
+#     # Convert JSON to string for LLM input
+#     json_str = json.dumps(json_data, indent=2)
     
-    system_prompt = """
-    You are an expert Data Engineer AI specialized in CSV generation. Your task is to convert 
-    JSON data into a clean, well-formatted CSV file.
+#     system_prompt = """
+#     You are an expert Data Engineer AI specialized in CSV generation. Your task is to convert 
+#     JSON data into a clean, well-formatted CSV file.
 
-    ### RULES:
-    1. **Array Normalization**: If there are arrays of objects (e.g., "eras": [...]), create ONE ROW per array element
-    2. **Column Structure**: Extract fields from objects as separate columns
-    3. **Header Formatting**: Use clear, readable column names (e.g., "Best Player" not "best_player")
-    4. **Nested Arrays**: Convert to semicolon-separated values (e.g., ["a", "b"] becomes "a; b")
-    5. **Missing Values**: Use empty strings for missing/null values
-    6. **No Duplicates**: Ensure no duplicate rows
-    7. **Format**: Return ONLY the CSV content (including header row), nothing else
-    8. **Quoting**: Properly quote values that contain commas or special characters
+#     ### RULES:
+#     1. **Array Normalization**: If there are arrays of objects (e.g., "eras": [...]), create ONE ROW per array element
+#     2. **Column Structure**: Extract fields from objects as separate columns
+#     3. **Header Formatting**: Use clear, readable column names (e.g., "Best Player" not "best_player")
+#     4. **Nested Arrays**: Convert to semicolon-separated values (e.g., ["a", "b"] becomes "a; b")
+#     5. **Missing Values**: Use empty strings for missing/null values
+#     6. **No Duplicates**: Ensure no duplicate rows
+#     7. **Format**: Return ONLY the CSV content (including header row), nothing else
+#     8. **Quoting**: Properly quote values that contain commas or special characters
 
-    ### EXAMPLE:
-    Input JSON:
-    {
-      "eras": [
-        {"name": "Era1", "player": "John", "teams": ["A", "B"]},
-        {"name": "Era2", "player": "Jane", "teams": ["C"]}
-      ]
-    }
+#     ### EXAMPLE:
+#     Input JSON:
+#     {
+#       "eras": [
+#         {"name": "Era1", "player": "John", "teams": ["A", "B"]},
+#         {"name": "Era2", "player": "Jane", "teams": ["C"]}
+#       ]
+#     }
 
-    Expected CSV Output:
-    "Name","Player","Teams"
-    "Era1","John","A; B"
-    "Era2","Jane","C"
+#     Expected CSV Output:
+#     "Name","Player","Teams"
+#     "Era1","John","A; B"
+#     "Era2","Jane","C"
 
-    Return ONLY the CSV content, no additional text or explanations.
-    """
+#     Return ONLY the CSV content, no additional text or explanations.
+#     """
     
-    try:
-        loop = asyncio.get_event_loop()
+#     try:
+#         loop = asyncio.get_event_loop()
         
-        if LLM_PROVIDER == "gemini":
-            csv_result = await _call_llm_for_csv_gemini(json_str, system_prompt)
-        else:  # Default to groq
-            csv_result = await _call_llm_for_csv_groq(json_str, system_prompt)
+#         if LLM_PROVIDER == "gemini":
+#             csv_result = await _call_llm_for_csv_gemini(json_str, system_prompt)
+#         else:  # Default to groq
+#             csv_result = await _call_llm_for_csv_groq(json_str, system_prompt)
         
-        return csv_result
+#         return csv_result
         
-    except Exception as e:
-        error_msg = str(e)
-        print(f"CSV Conversion Error: {error_msg}")
-        # Fallback: return JSON as single-column CSV
-        return f"\"Data\"\n\"{json_str.replace(chr(34), chr(34)+chr(34))}\""
-
+#     except Exception as e:
+#         error_msg = str(e)
+#         print(f"CSV Conversion Error: {error_msg}")
+#         # Fallback: return JSON as single-column CSV
+#         return f"\"Data\"\n\"{json_str.replace(chr(34), chr(34)+chr(34))}\""
 
 async def _call_llm_for_csv_groq(json_str: str, system_prompt: str) -> str:
     """

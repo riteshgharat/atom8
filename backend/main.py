@@ -120,14 +120,22 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
 @app.post("/convert-to-csv")
 async def convert_to_csv(data: dict):
     """
-    Convert JSON data to CSV format using LLM.
+    Convert structured data directly to CSV format using LLM.
+    Uses ai_structurizer_to_csv for direct conversion (bypasses JSON intermediate).
     """
-    from services.llm_service import json_to_csv_converter
+    from services.llm_service import ai_structurizer_to_csv
+    import json
     
     try:
-        csv_content = await json_to_csv_converter(data)
+        # Extract the raw data and schema from the request
+        raw_data = data.get("raw_data") or json.dumps(data, indent=2)
+        target_schema = data.get("target_schema", "Extract all fields as CSV columns")
+        is_csv_input = data.get("is_csv_input", False)
+        
+        csv_content = await ai_structurizer_to_csv(raw_data, target_schema, is_csv_input)
         return {"csv": csv_content}
     except Exception as e:
+        print(f"CSV conversion error: {str(e)}")
         return {"error": str(e)}, 500
 
 

@@ -38,7 +38,7 @@ The frontend for ATOM8 is a high-performance, responsive React application built
 3. **Configure Environment Variables:**
    Create a `.env` file in the root of the `frontend` folder:
    ```env
-   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+   NEXT_PUBLIC_API_URL=http://localhost:8000
    ```
 
 4. **Run the development server:**

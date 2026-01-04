@@ -130,7 +130,7 @@ export default function OutputsPanel() {
     const generatePDF = async (output: OutputFile) => {
         // Generate comprehensive Data Autopsy report using LLM and get PDF
         try {
-            const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+            const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
             const response = await fetch(`${API_BASE_URL}/generate-report`, {
                 method: 'POST',
                 headers: {
@@ -212,15 +212,21 @@ export default function OutputsPanel() {
             mimeType = 'application/json';
             extension = 'json';
         } else if (output.type === 'csv') {
-            // Use LLM to intelligently convert JSON to CSV
+            // Use direct CSV conversion (ai_structurizer_to_csv)
             try {
-                const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+                const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+                // Send raw data for direct CSV conversion
                 const response = await fetch(`${API_BASE_URL}/convert-to-csv`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(output.data),
+                    body: JSON.stringify({
+                        raw_data: JSON.stringify(output.data, null, 2),
+                        target_schema: "Extract all fields as CSV columns with proper headers",
+                        is_csv_input: false
+                    }),
                 });
 
                 if (!response.ok) {
@@ -231,7 +237,7 @@ export default function OutputsPanel() {
                 content = result.csv;
             } catch (error) {
                 console.error('CSV conversion error:', error);
-                // Fallback to JSON if LLM conversion fails
+                // Fallback to JSON if conversion fails
                 content = JSON.stringify(output.data, null, 2);
             }
             mimeType = 'text/csv';
