@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
     FileSpreadsheet,
     FileText,
@@ -76,6 +76,9 @@ export default function OutputsPanel() {
     const { status, result, sources } = useJobStore();
     const isProcessing = status === 'processing' || status === 'uploading';
     const isCompleted = status === 'completed';
+
+    // Track which files are currently downloading
+    const [downloading, setDownloading] = useState<Record<string, boolean>>({});
 
     // Generate output files - only show after completion
     const generateOutputFiles = (): OutputFile[] => {
@@ -196,65 +199,73 @@ export default function OutputsPanel() {
     };
 
     const handleDownload = async (output: OutputFile) => {
-        if (output.type === 'pdf') {
-            generatePDF(output);
-            return;
-        }
+        // Set downloading state
+        setDownloading(prev => ({ ...prev, [output.id]: true }));
 
-        if (!output.data) return;
-
-        let content: string;
-        let mimeType: string;
-        let extension: string;
-
-        if (output.type === 'json') {
-            content = JSON.stringify(output.data, null, 2);
-            mimeType = 'application/json';
-            extension = 'json';
-        } else if (output.type === 'csv') {
-            // Use direct CSV conversion (ai_structurizer_to_csv)
-            try {
-                const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-                // Send raw data for direct CSV conversion
-                const response = await fetch(`${API_BASE_URL}/convert-to-csv`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        raw_data: JSON.stringify(output.data, null, 2),
-                        target_schema: "Extract all fields as CSV columns with proper headers",
-                        is_csv_input: false
-                    }),
-                });
-
-                if (!response.ok) {
-                    throw new Error('CSV conversion failed');
-                }
-
-                const result = await response.json();
-                content = result.csv;
-            } catch (error) {
-                console.error('CSV conversion error:', error);
-                // Fallback to JSON if conversion fails
-                content = JSON.stringify(output.data, null, 2);
+        try {
+            if (output.type === 'pdf') {
+                await generatePDF(output);
+                return;
             }
-            mimeType = 'text/csv';
-            extension = 'csv';
-        } else {
-            return;
-        }
 
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = output.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+            if (!output.data) return;
+
+            let content: string;
+            let mimeType: string;
+            let extension: string;
+
+            if (output.type === 'json') {
+                content = JSON.stringify(output.data, null, 2);
+                mimeType = 'application/json';
+                extension = 'json';
+            } else if (output.type === 'csv') {
+                // Use direct CSV conversion (ai_structurizer_to_csv)
+                try {
+                    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+                    // Send raw data for direct CSV conversion
+                    const response = await fetch(`${API_BASE_URL}/convert-to-csv`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            raw_data: JSON.stringify(output.data, null, 2),
+                            target_schema: "Extract all fields as CSV columns with proper headers",
+                            is_csv_input: false
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('CSV conversion failed');
+                    }
+
+                    const result = await response.json();
+                    content = result.csv;
+                } catch (error) {
+                    console.error('CSV conversion error:', error);
+                    // Fallback to JSON if conversion fails
+                    content = JSON.stringify(output.data, null, 2);
+                }
+                mimeType = 'text/csv';
+                extension = 'csv';
+            } else {
+                return;
+            }
+
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = output.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } finally {
+            // Clear downloading state
+            setDownloading(prev => ({ ...prev, [output.id]: false }));
+        }
     };
 
     const handleDownloadAll = () => {
@@ -323,7 +334,11 @@ export default function OutputsPanel() {
                                             <StatusBadge status={file.status} estimatedTime={file.estimatedTime} />
                                         </div>
                                         {file.status === 'ready' && (
-                                            <Download className="w-4 h-4 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
+                                            downloading[file.id] ? (
+                                                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                                            ) : (
+                                                <Download className="w-4 h-4 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
+                                            )
                                         )}
                                     </div>
                                 </motion.div>

@@ -61,14 +61,27 @@ export function usePipeline() {
             setStageData(status.stage_data);
         }
 
-        // Update source status
+        // Update ALL source statuses (not just one)
+        const allSources = useJobStore.getState().sources;
         if (status.status === 'completed') {
-            updateSource(sourceId, { status: 'completed' });
+            // Mark ALL sources as completed
+            allSources.forEach(source => {
+                updateSource(source.id, { status: 'completed' });
+            });
             addLog(`✓ Processing completed successfully`);
         } else if (status.status === 'failed') {
-            updateSource(sourceId, { status: 'failed', error: status.error || 'Unknown error' });
+            // Mark ALL sources as failed
+            allSources.forEach(source => {
+                updateSource(source.id, { status: 'failed', error: status.error || 'Unknown error' });
+            });
             addLog(`✗ Processing failed: ${status.error}`);
         } else {
+            // Mark all sources as processing during other states
+            allSources.forEach(source => {
+                if (source.status !== 'completed' && source.status !== 'failed') {
+                    updateSource(source.id, { status: 'processing' });
+                }
+            });
             addLog(`→ ${status.status}`);
         }
 
