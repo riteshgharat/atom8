@@ -148,6 +148,167 @@ async def _call_gemini(processed_data: str, system_prompt: str) -> Dict[str, Any
     return structured_output
 
 
+async def ai_structurizer_to_csv(raw_data: str, target_schema: str, is_csv_input: bool = False) -> str:
+    """
+    Directly converts raw data to CSV format without going through JSON intermediate.
+    Optimized for CSV inputs and faster processing.
+    
+    Args:
+        raw_data: The raw unstructured/structured data to process
+        target_schema: Description of desired output columns/structure
+        is_csv_input: If True, preserves original CSV columns and adds requested fields
+    
+    Returns:
+        String containing CSV data
+    """
+    
+    # Truncate if necessary
+    processed_data = truncate_data(raw_data, target_schema)
+    
+    # Build appropriate prompt based on input type
+    if is_csv_input:
+        system_prompt = f"""
+    You are an expert Data Engineer AI. Your task is to process CSV data and convert it into 
+    a clean, enhanced CSV format.
+
+    ### TARGET SCHEMA/REQUIREMENTS:
+    {target_schema}
+
+    ### RULES FOR CSV INPUT:
+    1. **PRESERVE ORIGINAL COLUMNS**: Keep all columns from the input CSV
+    2. **ADD NEW FIELDS**: If the target schema requests additional fields, add them as new columns
+    3. **CLEANING**: Remove noise, fix formatting issues, standardize data
+    4. **NORMALIZATION**: 
+       - Dates: Convert to YYYY-MM-DD
+       - Currency: Convert to numeric float (e.g., "$1,200.50" -> 1200.50)
+       - Strings: Proper casing (Title Case for names)
+    5. **ERROR HANDLING**: If a new field cannot be extracted, leave it empty
+    6. **HEADER ROW**: First row must be column headers
+    7. **QUOTING**: Properly quote values that contain commas or special characters
+    8. **OUTPUT**: Return ONLY the CSV content (including header row), no explanations
+    
+    ### EXAMPLE:
+    Input CSV:
+    name,age
+    john,25
+    jane,30
+    
+    Target Schema: "Add email and city columns"
+    
+    Output CSV:
+    "Name","Age","Email","City"
+    "John","25","","" 
+    "Jane","30","",""
+    
+    Return ONLY the CSV content, nothing else.
+    """
+    else:
+        system_prompt = f"""
+    You are an expert Data Engineer AI. Your task is to extract information from messy, 
+    unstructured data and convert it DIRECTLY into a clean CSV file.
+
+    ### TARGET SCHEMA:
+    {target_schema}
+
+    ### RULES:
+    1. **STRUCTURE**: Only return valid CSV. No conversational text, no JSON.
+    2. **CLEANING**: Remove noise, boilerplate text, and irrelevant characters
+    3. **NORMALIZATION**: 
+       - Dates: Convert to YYYY-MM-DD
+       - Currency: Convert to numeric float (e.g., "$1,200.50" -> 1200.50)
+       - Strings: Proper casing (Title Case for names)
+    4. **ERROR HANDLING**: If a field cannot be found, leave it empty in the CSV
+    5. **MULTILINGUAL**: Translate any non-English data to English during extraction
+    6. **PARTIAL DATA**: If input is truncated, extract what you can from available data
+    7. **ARRAY NORMALIZATION**: If there are arrays/lists, create ONE ROW per array element
+    8. **HEADER ROW**: First row must be clear, readable column names
+    9. **QUOTING**: Properly quote values that contain commas or special characters
+    10. **NO DUPLICATES**: Ensure no duplicate rows
+    
+    ### EXAMPLE:
+    Input: "Invoice #123: John Doe bought Product A for $100 on 2024-01-01. Jane Smith bought Product B for $200 on 2024-01-02."
+    Schema: "Extract invoice number, customer name, product, price, date"
+    
+    Output CSV:
+    "Invoice Number","Customer Name","Product","Price","Date"
+    "123","John Doe","Product A","100.00","2024-01-01"
+    "","Jane Smith","Product B","200.00","2024-01-02"
+    
+    Return ONLY the CSV content, nothing else.
+    """
+    
+    try:
+        loop = asyncio.get_event_loop()
+        
+        if LLM_PROVIDER == "gemini":
+            return await _call_llm_for_direct_csv_gemini(processed_data, system_prompt)
+        else:  # Default to groq
+            return await _call_llm_for_direct_csv_groq(processed_data, system_prompt)
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Direct CSV Conversion Error: {error_msg}")
+        
+        # Fallback: return raw data as single-column CSV
+        return f'"Raw Data"\n"{str(raw_data)[:1000].replace(chr(34), chr(34)+chr(34))}"'
+
+
+async def _call_llm_for_direct_csv_groq(processed_data: str, system_prompt: str) -> str:
+    """
+    Call Groq API for direct CSV conversion from raw data.
+    """
+    loop = asyncio.get_event_loop()
+    
+    def call_groq_api():
+        return groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"RAW DATA TO PROCESS:\n{processed_data}"}
+            ],
+            temperature=0.1,
+        )
+    
+    chat_completion = await loop.run_in_executor(None, call_groq_api)
+    csv_content = chat_completion.choices[0].message.content.strip()
+    
+    # Remove markdown code fences if present
+    if csv_content.startswith("```"):
+        lines = csv_content.split("\n")
+        csv_content = "\n".join(lines[1:-1]) if len(lines) > 2 else csv_content
+    
+    return csv_content
+
+
+async def _call_llm_for_direct_csv_gemini(processed_data: str, system_prompt: str) -> str:
+    """
+    Call Gemini API for direct CSV conversion from raw data.
+    """
+    loop = asyncio.get_event_loop()
+    
+    def call_gemini_api():
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash-lite",
+            system_instruction=system_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1
+            )
+        )
+        
+        response = model.generate_content(f"RAW DATA TO PROCESS:\n{processed_data}")
+        return response.text
+    
+    csv_content = await loop.run_in_executor(None, call_gemini_api)
+    csv_content = csv_content.strip()
+    
+    # Remove markdown code fences if present
+    if csv_content.startswith("```"):
+        lines = csv_content.split("\n")
+        csv_content = "\n".join(lines[1:-1]) if len(lines) > 2 else csv_content
+    
+    return csv_content
+
+
 async def json_to_csv_converter(json_data: Dict[str, Any]) -> str:
     """
     Uses Groq or Gemini LLM to intelligently convert JSON data to CSV format.
@@ -229,6 +390,35 @@ async def _call_llm_for_csv_groq(json_str: str, system_prompt: str) -> str:
     
     chat_completion = await loop.run_in_executor(None, call_groq_api)
     csv_content = chat_completion.choices[0].message.content.strip()
+    
+    # Remove markdown code fences if present
+    if csv_content.startswith("```"):
+        lines = csv_content.split("\n")
+        csv_content = "\n".join(lines[1:-1]) if len(lines) > 2 else csv_content
+    
+    return csv_content
+
+
+async def _call_llm_for_csv_gemini(json_str: str, system_prompt: str) -> str:
+    """
+    Call Gemini API for JSON to CSV conversion.
+    """
+    loop = asyncio.get_event_loop()
+    
+    def call_gemini_api():
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash-lite",
+            system_instruction=system_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1
+            )
+        )
+        
+        response = model.generate_content(f"Convert this JSON to CSV:\\n{json_str}")
+        return response.text
+    
+    csv_content = await loop.run_in_executor(None, call_gemini_api)
+    csv_content = csv_content.strip()
     
     # Remove markdown code fences if present
     if csv_content.startswith("```"):

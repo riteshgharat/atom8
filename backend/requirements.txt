@@ -18,3 +18,5 @@ Pillow              # For image processing
 requests            # For web fetching
 pydub               # For audio duration detection (Whisper)
 google-generativeai # For Gemini LLM
+reportlab           # For PDF generation
+markdown2           # For markdown to HTML conversion

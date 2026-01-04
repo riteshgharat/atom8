@@ -131,15 +131,34 @@ async def convert_to_csv(data: dict):
         return {"error": str(e)}, 500
 
 
+
 @app.post("/generate-report")
 async def generate_report(data: dict):
     """
-    Generate a comprehensive Data Autopsy report using LLM.
+    Generate a comprehensive Data Autopsy report as a PDF file.
     """
     from services.llm_service import generate_data_autopsy_report
+    from services.pdf_generator import create_pdf_report
+    from fastapi.responses import Response
     
     try:
+        # Generate markdown report content using LLM
         report_content = await generate_data_autopsy_report(data)
-        return {"report": report_content}
+        
+        # Convert to PDF
+        pdf_bytes = create_pdf_report(report_content, data)
+        
+        # Return PDF as downloadable file
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "attachment; filename=ATOM8_Data_Autopsy_Report.pdf"
+            }
+        )
     except Exception as e:
+        print(f"Report generation error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {"error": str(e)}, 500
+
